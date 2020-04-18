@@ -2499,6 +2499,400 @@ def profile_device_delete(name, device_name, remote_addr=None,
     )
 
 
+####################
+# Network Management
+####################
+def network_list(list_names=False, remote_addr=None,
+                 cert=None, key=None, verify_cert=True):
+    ''' Lists all networks from the LXD.
+
+        list_names :
+
+            Return a list of names instead of full blown dicts.
+
+        remote_addr :
+            An URL to a remote Server, you also have to give cert and key if
+            you provide remote_addr and its a TCP Address!
+
+            Examples:
+                https://myserver.lan:8443
+                /var/lib/mysocket.sock
+
+        cert :
+            PEM Formatted SSL Certificate.
+
+            Examples:
+                ~/.config/lxc/client.crt
+
+        key :
+            PEM Formatted SSL Key.
+
+            Examples:
+                ~/.config/lxc/client.key
+
+        verify_cert : True
+            Wherever to verify the cert, this is by default True
+            but in the most cases you want to set it off as LXD
+            normaly uses self-signed certificates.
+
+        CLI Examples:
+
+        .. code-block:: bash
+
+            salt '*' lxd.network_list true --out=json
+            salt '*' lxd.network_list --out=json
+    '''
+
+    client = pylxd_client_get(remote_addr, cert, key, verify_cert)
+
+    networks = client.networks.all()
+    if list_names:
+        return [p.name for p in networks]
+
+    return [_pylxd_model_to_dict(i) for i in networks]
+
+
+def network_create(name, config=None, description=None,
+                   remote_addr=None,
+                   cert=None, key=None, verify_cert=True):
+    ''' Creates a network.
+
+        name :
+            The name of the network to get.
+
+        config :
+            A config dict or None (None = unset).
+
+            Can also be a list:
+                [{'key': 'boot.autostart', 'value': 1},
+                 {'key': 'security.privileged', 'value': '1'}]
+
+        description :
+            A description string or None (None = unset).
+
+        remote_addr :
+            An URL to a remote Server, you also have to give cert and key if
+            you provide remote_addr and its a TCP Address!
+
+            Examples:
+                https://myserver.lan:8443
+                /var/lib/mysocket.sock
+
+        cert :
+            PEM Formatted SSL Certificate.
+
+            Examples:
+                ~/.config/lxc/client.crt
+
+        key :
+            PEM Formatted SSL Key.
+
+            Examples:
+                ~/.config/lxc/client.key
+
+        verify_cert : True
+            Wherever to verify the cert, this is by default True
+            but in the most cases you want to set it off as LXD
+            normaly uses self-signed certificates.
+
+        CLI Examples:
+
+        .. code-block:: bash
+
+            $ salt '*' lxd.network_create config="{dns.domain: 'example.com', ipv4.address: '10.0.0.1/24', ipv4.nat: 'true'}" name=lxdbr1
+
+        See the `lxd-docs`_ for the details about the config and devices dicts.
+
+        .. _lxd-docs: https://github.com/lxc/lxd/blob/master/doc/rest-api.md#post-12
+
+        # noqa
+    '''
+    client = pylxd_client_get(remote_addr, cert, key, verify_cert)
+
+    try:
+        network = client.networks.create(
+            name=name, config=config, description=description)
+    except pylxd.exceptions.LXDAPIException as e:
+        raise CommandExecutionError(six.text_type(e))
+
+    return _pylxd_model_to_dict(network)
+
+
+def network_get(name, remote_addr=None,
+                cert=None, key=None, verify_cert=True, _raw=False):
+    ''' Gets a network from the LXD
+
+        name :
+            The name of the network to get.
+
+        remote_addr :
+            An URL to a remote Server, you also have to give cert and key if
+            you provide remote_addr and its a TCP Address!
+
+            Examples:
+                https://myserver.lan:8443
+                /var/lib/mysocket.sock
+
+        cert :
+            PEM Formatted SSL Certificate.
+
+            Examples:
+                ~/.config/lxc/client.crt
+
+        key :
+            PEM Formatted SSL Key.
+
+            Examples:
+                ~/.config/lxc/client.key
+
+        verify_cert : True
+            Wherever to verify the cert, this is by default True
+            but in the most cases you want to set it off as LXD
+            normaly uses self-signed certificates.
+
+        _raw :
+            Return the pylxd object, this is internal and by states in use.
+
+        CLI Examples:
+
+        .. code-block:: bash
+
+            $ salt '*' lxd.network_get lxdbr0
+    '''
+    client = pylxd_client_get(remote_addr, cert, key, verify_cert)
+
+    network = None
+    try:
+        network = client.networks.get(name)
+    except pylxd.exceptions.LXDAPIException:
+        raise SaltInvocationError(
+            'Network \'{0}\' not found'.format(name)
+        )
+
+    if _raw:
+        return network
+
+    return _pylxd_model_to_dict(network)
+
+
+def network_delete(name, remote_addr=None,
+                   cert=None, key=None, verify_cert=True):
+    ''' Deletes a network.
+
+        name :
+            The name of the network to delete.
+
+        remote_addr :
+            An URL to a remote Server, you also have to give cert and key if
+            you provide remote_addr and its a TCP Address!
+
+            Examples:
+                https://myserver.lan:8443
+                /var/lib/mysocket.sock
+
+        cert :
+            PEM Formatted SSL Certificate.
+
+            Examples:
+                ~/.config/lxc/client.crt
+
+        key :
+            PEM Formatted SSL Key.
+
+            Examples:
+                ~/.config/lxc/client.key
+
+        verify_cert : True
+            Wherever to verify the cert, this is by default True
+            but in the most cases you want to set it off as LXD
+            normaly uses self-signed certificates.
+
+        CLI Example:
+
+        .. code-block:: bash
+
+            $ salt '*' lxd.network_delete lxdbr1
+    '''
+    network = network_get(
+        name,
+        remote_addr,
+        cert,
+        key,
+        verify_cert,
+        _raw=True
+    )
+
+    network.delete()
+    return True
+
+
+def network_config_get(name, config_key, remote_addr=None,
+                       cert=None, key=None, verify_cert=True):
+    ''' Get a network config item.
+
+        name :
+            The name of the network to get the config item from.
+
+        config_key :
+            The key for the item to retrieve.
+
+        remote_addr :
+            An URL to a remote Server, you also have to give cert and key if
+            you provide remote_addr and its a TCP Address!
+
+            Examples:
+                https://myserver.lan:8443
+                /var/lib/mysocket.sock
+
+        cert :
+            PEM Formatted SSL Certificate.
+
+            Examples:
+                ~/.config/lxc/client.crt
+
+        key :
+            PEM Formatted SSL Key.
+
+            Examples:
+                ~/.config/lxc/client.key
+
+        verify_cert : True
+            Wherever to verify the cert, this is by default True
+            but in the most cases you want to set it off as LXD
+            normaly uses self-signed certificates.
+
+        CLI Example:
+
+        .. code-block:: bash
+
+            $ salt '*' lxd.network_config_get lxdbr0 ipv4.nat
+    '''
+    network = network_get(
+        name,
+        remote_addr,
+        cert,
+        key,
+        verify_cert,
+        _raw=True
+    )
+
+    return _get_property_dict_item(network, 'config', config_key)
+
+
+def network_config_set(name, config_key, config_value,
+                       remote_addr=None,
+                       cert=None, key=None, verify_cert=True):
+    ''' Set a network config item.
+
+        name :
+            The name of the network to set the config item to.
+
+        config_key :
+            The items key.
+
+        config_value :
+            Its items value.
+
+        remote_addr :
+            An URL to a remote Server, you also have to give cert and key if
+            you provide remote_addr and its a TCP Address!
+
+            Examples:
+                https://myserver.lan:8443
+                /var/lib/mysocket.sock
+
+        cert :
+            PEM Formatted SSL Certificate.
+
+            Examples:
+                ~/.config/lxc/client.crt
+
+        key :
+            PEM Formatted SSL Key.
+
+            Examples:
+                ~/.config/lxc/client.key
+
+        verify_cert : True
+            Wherever to verify the cert, this is by default True
+            but in the most cases you want to set it off as LXD
+            normaly uses self-signed certificates.
+
+        CLI Example:
+
+        .. code-block:: bash
+
+            $ salt '*' lxd.network_config_set lxdbr0 ipv4.nat false
+    '''
+    network = network_get(
+        name,
+        remote_addr,
+        cert,
+        key,
+        verify_cert,
+        _raw=True
+    )
+
+    return _set_property_dict_item(
+        network, 'config', config_key, config_value
+    )
+
+
+def network_config_delete(name, config_key, remote_addr=None,
+                          cert=None, key=None, verify_cert=True):
+    ''' Delete a network config item.
+
+        name :
+            The name of the network to delete the config item.
+
+        config_key :
+            The config key for the value to retrieve.
+
+        remote_addr :
+            An URL to a remote Server, you also have to give cert and key if
+            you provide remote_addr and its a TCP Address!
+
+            Examples:
+                https://myserver.lan:8443
+                /var/lib/mysocket.sock
+
+        cert :
+            PEM Formatted SSL Certificate.
+
+            Examples:
+                ~/.config/lxc/client.crt
+
+        key :
+            PEM Formatted SSL Key.
+
+            Examples:
+                ~/.config/lxc/client.key
+
+        verify_cert : True
+            Wherever to verify the cert, this is by default True
+            but in the most cases you want to set it off as LXD
+            normaly uses self-signed certificates.
+
+        CLI Example:
+
+        .. code-block:: bash
+
+            $ salt '*' lxd.network_config_delete lxdbr0 raw.dnsmasq
+    '''
+    network = network_get(
+        name,
+        remote_addr,
+        cert,
+        key,
+        verify_cert,
+        _raw=True
+    )
+
+    return _delete_property_dict_item(
+        network, 'config', config_key
+    )
+
+
 ##################
 # Image Management
 ##################
@@ -3418,7 +3812,8 @@ def sync_config_devices(obj, newconfig, newdevices, test=False):
     if newdevices is None:
         newdevices = {}
 
-    dk = set(obj.devices.keys())
+    od = getattr(obj, "devices", {})
+    dk = set(od.keys())
     ndk = set(newdevices.keys())
 
     devices_changes = {}
@@ -3439,7 +3834,7 @@ def sync_config_devices(obj, newconfig, newdevices, test=False):
             ).format(k)
 
     # Changed devices
-    for k, v in six.iteritems(obj.devices):
+    for k, v in six.iteritems(od):
         # Ignore LXD internals also for new devices.
         if k == u'root':
             continue
